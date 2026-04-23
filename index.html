@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Credit Risk AI</title>
+
+<style>
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Arial;
+  background: linear-gradient(135deg, #0f172a, #020617);
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+.container {
+  width: 420px;
+}
+
+.search-box {
+  position: relative;
+}
+
+input {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: none;
+  background: #1e293b;
+  color: white;
+}
+
+button {
+  margin-top: 10px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: none;
+  background: #22c55e;
+  color: white;
+  cursor: pointer;
+}
+
+.suggestions {
+  position: absolute;
+  width: 100%;
+  background: #1e293b;
+  border-radius: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 999;
+}
+
+.suggestion-item {
+  padding: 10px;
+  cursor: pointer;
+}
+
+.suggestion-item:hover {
+  background: #334155;
+}
+
+.card {
+  margin-top: 20px;
+  padding: 20px;
+  border-radius: 16px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>📊 Credit Risk AI</h2>
+
+<div class="search-box">
+  <input id="empresa" placeholder="Digite empresa...">
+  <div id="suggestions" class="suggestions"></div>
+</div>
+
+<button onclick="buscar()">Buscar</button>
+<button onclick="topRisk()">🔥 Top Risco</button>
+
+<div id="resultado"></div>
+
+</div>
+
+<script>
+
+let timeout = null;
+
+// =========================
+// FORMATAR NÚMEROS
+// =========================
+function formatarNumero(valor) {
+  if (valor === null || valor === undefined) return "-";
+  return valor.toLocaleString('pt-BR');
+}
+
+// =========================
+// SCORE
+// =========================
+function calcularScore(valor) {
+  if (valor === null) return "D";
+  if (valor < 1.5) return "AAA";
+  if (valor < 2.5) return "AA";
+  if (valor < 3.5) return "A";
+  if (valor < 4.5) return "BBB";
+  if (valor < 6) return "BB";
+  if (valor < 8) return "B";
+  return "C";
+}
+
+function recomendacao(score) {
+  if (["AAA","AA","A"].includes(score))
+    return "🟢 Comprar / Longo prazo";
+  if (["BBB","BB"].includes(score))
+    return "🟡 Atenção / Avaliar melhor";
+  return "🔴 Evitar / Alto risco";
+}
+
+// =========================
+// PROBABILIDADE
+// =========================
+function interpretarProb(p) {
+  if (p < 0.05) return "🟢 Muito baixo risco";
+  if (p < 0.15) return "🟡 Risco moderado";
+  if (p < 0.30) return "🟠 Risco elevado";
+  return "🔴 Alto risco";
+}
+
+// =========================
+// EXPLICAÇÕES
+// =========================
+function explicacaoAlavancagem(valor) {
+  if (valor === null) return "Empresa com prejuízo.";
+  if (valor < 2) return "Baixo nível de dívida.";
+  if (valor < 4.5) return "Dívida moderada.";
+  return "Alta alavancagem.";
+}
+
+// =========================
+// AUTOCOMPLETE
+// =========================
+async function autocomplete() {
+  const query = document.getElementById("empresa").value;
+  const box = document.getElementById("suggestions");
+
+  clearTimeout(timeout);
+
+  if (query.length < 2) {
+    box.innerHTML = "";
+    return;
+  }
+
+  timeout = setTimeout(async () => {
+    const res = await fetch(`/api?empresa=${query}`);
+    const data = await res.json();
+
+    box.innerHTML = "";
+
+    data.forEach(item => {
+      const div = document.createElement("div");
+      div.className = "suggestion-item";
+      div.innerText = item.Empresa;
+
+      div.onclick = () => {
+        document.getElementById("empresa").value = item.Empresa;
+        box.innerHTML = "";
+      };
+
+      box.appendChild(div);
+    });
+  }, 300);
+}
+
+// =========================
+// BUSCA
+// =========================
+async function buscar() {
+  const empresa = document.getElementById("empresa").value;
+  const div = document.getElementById("resultado");
+
+  div.innerHTML = "🔄 Buscando...";
+
+  const res = await fetch(`/api?empresa=${empresa}`);
+  const data = await res.json();
+
+  const item = data[0];
+
+  if (!item) {
+    div.innerHTML = "Empresa não encontrada";
+    return;
+  }
+
+  let corBg = "#1e293b";
+  let corRating = "#22c55e";
+
+  if (item.Rating && item.Rating.includes("🔴")) {
+    corBg = "#7f1d1d";
+    corRating = "#ef4444";
+  } else if (item.Rating && item.Rating.includes("🟡")) {
+    corBg = "#78350f";
+    corRating = "#eab308";
+  }
+
+  const score = calcularScore(item.Alavancagem);
+  const rec = recomendacao(score);
+
+  const prob = item.Prob_Default || 0;
+
+  div.innerHTML = `
+    <div class="card" style="background:${corBg}">
+      <h3>${item.Empresa}</h3>
+
+      <p>💰 Dívida: ${formatarNumero(item.Divida_2024)}</p>
+      <p>📈 EBITDA: ${formatarNumero(item.EBITDA_2024)}</p>
+      <p>⚖️ Alavancagem: ${item.Alavancagem}</p>
+
+      <p><strong>📊 Análise:</strong><br>
+      ${explicacaoAlavancagem(item.Alavancagem)}</p>
+
+      <p><strong>⭐ Score:</strong> ${score}</p>
+      <p>${rec}</p>
+
+      <p><strong>⚠️ Probabilidade de Inadimplência:</strong><br>
+      ${Math.round(prob * 100)}%<br>
+      ${interpretarProb(prob)}</p>
+
+      <p style="color:${corRating}; font-weight:bold;">
+        ${item.Rating || ""}
+      </p>
+    </div>
+  `;
+}
+
+// =========================
+// RANKING
+// =========================
+async function topRisk() {
+  const div = document.getElementById("resultado");
+
+  const res = await fetch(`/api?tipo=top-risk`);
+  const data = await res.json();
+
+  let html = `<div class="card"><h3>🔥 Top 10 Mais Arriscadas</h3>`;
+
+  data.forEach((item, i) => {
+    html += `<p>${i + 1}. ${item.Empresa} - ${item.Alavancagem}</p>`;
+  });
+
+  html += `</div>`;
+
+  div.innerHTML = html;
+}
+
+// eventos
+document.getElementById("empresa").addEventListener("input", autocomplete);
+
+</script>
+
+</body>
+</html>
