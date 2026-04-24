@@ -91,8 +91,6 @@ button {
 
 <script>
 
-let timeout = null;
-
 // =========================
 // FORMATAR NÚMEROS
 // =========================
@@ -102,17 +100,16 @@ function formatarNumero(valor) {
 }
 
 // =========================
-// SCORE
+// SCORE (AGORA BASEADO NA PROBABILIDADE)
 // =========================
-function calcularScore(valor) {
-  if (valor === null) return "D";
-  if (valor < 1.5) return "AAA";
-  if (valor < 2.5) return "AA";
-  if (valor < 3.5) return "A";
-  if (valor < 4.5) return "BBB";
-  if (valor < 6) return "BB";
-  if (valor < 8) return "B";
-  return "C";
+function calcularScore(prob) {
+  if (prob < 0.05) return "AAA";
+  if (prob < 0.10) return "AA";
+  if (prob < 0.20) return "A";
+  if (prob < 0.30) return "BBB";
+  if (prob < 0.50) return "BB";
+  if (prob < 0.70) return "B";
+  return "D";
 }
 
 function recomendacao(score) {
@@ -134,18 +131,23 @@ function interpretarProb(p) {
 }
 
 // =========================
-// EXPLICAÇÕES
+// EXPLICAÇÃO
 // =========================
-function explicacaoAlavancagem(valor) {
-  if (valor === null) return "Empresa com prejuízo.";
-  if (valor < 2) return "Baixo nível de dívida.";
-  if (valor < 4.5) return "Dívida moderada.";
-  return "Alta alavancagem.";
+function explicacao(item) {
+  if (item.Alavancagem > 4.5)
+    return "Alta alavancagem é o principal fator de risco.";
+
+  if (item.Crescimento_EBITDA < 0)
+    return "Queda no EBITDA aumenta o risco.";
+
+  return "Estrutura financeira relativamente saudável.";
 }
 
 // =========================
 // AUTOCOMPLETE
 // =========================
+let timeout = null;
+
 async function autocomplete() {
   const query = document.getElementById("empresa").value;
   const box = document.getElementById("suggestions");
@@ -179,7 +181,7 @@ async function autocomplete() {
 }
 
 // =========================
-// BUSCA
+// BUSCA PRINCIPAL
 // =========================
 async function buscar() {
   const empresa = document.getElementById("empresa").value;
@@ -197,49 +199,49 @@ async function buscar() {
     return;
   }
 
-  let corBg = "#1e293b";
-  let corRating = "#22c55e";
-
-  if (item.Rating && item.Rating.includes("🔴")) {
-    corBg = "#7f1d1d";
-    corRating = "#ef4444";
-  } else if (item.Rating && item.Rating.includes("🟡")) {
-    corBg = "#78350f";
-    corRating = "#eab308";
-  }
-
-  const score = calcularScore(item.Alavancagem);
+  const prob = item.Prob_Default || 0;
+  const score = calcularScore(prob);
   const rec = recomendacao(score);
 
-  const prob = item.Prob_Default || 0;
-
   div.innerHTML = `
-    <div class="card" style="background:${corBg}">
+    <div class="card" style="background:#1e293b">
+
       <h3>${item.Empresa}</h3>
 
       <p>💰 Dívida: ${formatarNumero(item.Divida_2024)}</p>
       <p>📈 EBITDA: ${formatarNumero(item.EBITDA_2024)}</p>
-      <p>⚖️ Alavancagem: ${item.Alavancagem}</p>
+      <p>⚖️ Alavancagem: ${item.Alavancagem.toFixed(2)}</p>
 
-      <p><strong>📊 Análise:</strong><br>
-      ${explicacaoAlavancagem(item.Alavancagem)}</p>
+      <hr>
 
-      <p><strong>⭐ Score:</strong> ${score}</p>
+      <p style="font-size:18px;">
+        📊 <b>Probabilidade de Default:</b><br>
+        ${(prob * 100).toFixed(1)}%
+      </p>
+
+      <p>${interpretarProb(prob)}</p>
+
+      <p style="font-size:18px;">
+        ⭐ <b>Score:</b> ${score}
+      </p>
+
       <p>${rec}</p>
 
-      <p><strong>⚠️ Probabilidade de Inadimplência:</strong><br>
-      ${Math.round(prob * 100)}%<br>
-      ${interpretarProb(prob)}</p>
+      <hr>
 
-      <p style="color:${corRating}; font-weight:bold;">
-        ${item.Rating || ""}
+      <p><b>🧠 Explicação do Modelo:</b><br>
+      ${explicacao(item)}</p>
+
+      <p style="font-size:12px; color:#94a3b8;">
+        Modelo: Regressão Logística (3 variáveis)
       </p>
+
     </div>
   `;
 }
 
 // =========================
-// RANKING
+// TOP RISCO
 // =========================
 async function topRisk() {
   const div = document.getElementById("resultado");
@@ -258,7 +260,7 @@ async function topRisk() {
   div.innerHTML = html;
 }
 
-// eventos
+// evento
 document.getElementById("empresa").addEventListener("input", autocomplete);
 
 </script>
