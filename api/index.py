@@ -124,7 +124,7 @@ def carregar_dados():
 # =========================
 # API
 # =========================
-@app.route('/api')
+@app.route('/')
 def api():
     tipo = request.args.get('tipo', '')
     empresa_query = request.args.get('empresa', '')
