@@ -115,7 +115,7 @@ def gerar_score(prob):
 # =========================
 # API
 # =========================
-@app.route('/api')
+@app.route('/')
 def api():
     empresa_query = request.args.get('empresa', '').lower()
 
