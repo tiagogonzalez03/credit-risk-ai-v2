@@ -1,5 +1,5 @@
-from model import prever
 from flask import Flask, request, jsonify
+from model import prever
 import csv
 import os
 import unicodedata
@@ -42,35 +42,6 @@ def gerar_score(prob):
         return "BB"
     else:
         return "B"
-
-# =========================
-# PROBABILIDADE
-# =========================
-def calcular_probabilidade(d):
-    if d["Alavancagem"] is None:
-        return 0.9
-
-    score = 0
-
-    # Alavancagem (principal fator)
-    if d["Alavancagem"] < 1:
-        score += 0.02
-    elif d["Alavancagem"] < 2:
-        score += 0.05
-    elif d["Alavancagem"] < 4.5:
-        score += 0.15
-    else:
-        score += 0.35
-
-    # Dívida crescendo rápido
-    if d["Crescimento_Divida"] > 0.3:
-        score += 0.15
-
-    # EBITDA caindo
-    if d["Crescimento_EBITDA"] < 0:
-        score += 0.2
-
-    return min(score, 0.8)
 
 # =========================
 # INTERPRETAÇÃO
@@ -172,14 +143,19 @@ def api():
     # 🔎 BUSCA
     if empresa_query:
         query = limpar_texto(empresa_query)
-
         resultados = []
 
         for item in dados:
             nome = limpar_texto(item["Empresa"])
 
             if query in nome:
-                if item["Alavancagem"] is not None:     prob = prever(item["Alavancagem"]) else:     prob = 0.12
+
+                # ✅ CORREÇÃO AQUI
+                if item["Alavancagem"] is not None:
+                    prob = prever(item["Alavancagem"])
+                else:
+                    prob = 0.12
+
                 score = gerar_score(prob)
 
                 item["Prob_Default"] = round(prob, 3)
@@ -191,14 +167,3 @@ def api():
         return jsonify(resultados[:10])
 
     return jsonify({"status": "ok"})
-
-# =========================
-# VERCEL HANDLER
-# =========================
-def handler(environ, start_response):
-    return app(environ, start_response)
-
-# =========================
-# VERCEL ENTRYPOINT
-# =========================
-handler = app
