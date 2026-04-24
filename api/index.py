@@ -9,6 +9,7 @@ app = Flask(__name__)
 modelo = None
 dados_cache = None
 
+
 # =========================
 # CARREGAR DADOS
 # =========================
@@ -18,36 +19,55 @@ def carregar_dataset():
     if dados_cache is not None:
         return dados_cache
 
-    base_path = os.path.dirname(__file__)
     file_path = os.path.join(os.getcwd(), 'data', 'SPGlobal_Export_4-14-2026_FinalVersion.csv')
+
     print("PATH:", file_path)
     print("EXISTS:", os.path.exists(file_path))
 
     df = pd.read_csv(file_path, encoding='latin-1')
 
-    # limpar dados inválidos
-    df = df.dropna()
+    # =========================
+    # CONVERSÃO SEGURA
+    # =========================
+    def to_float(col):
+        return pd.to_numeric(
+            col.astype(str).str.replace(',', ''),
+            errors='coerce'
+        )
 
-    # conversões
-    df["Divida"] = df.iloc[:, 3].astype(str).str.replace(',', '').astype(float)
-    df["Divida_2023"] = df.iloc[:, 2].astype(str).str.replace(',', '').astype(float)
+    df["Divida"] = to_float(df.iloc[:, 3])
+    df["Divida_2023"] = to_float(df.iloc[:, 2])
 
-    df["EBITDA"] = df.iloc[:, 9].astype(str).str.replace(',', '').astype(float)
-    df["EBITDA_2023"] = df.iloc[:, 8].astype(str).str.replace(',', '').astype(float)
+    df["EBITDA"] = to_float(df.iloc[:, 9])
+    df["EBITDA_2023"] = to_float(df.iloc[:, 8])
 
-    # remover casos problemáticos
+    # =========================
+    # LIMPEZA
+    # =========================
+    df = df.dropna(subset=["Divida", "EBITDA"])
     df = df[df["EBITDA"] != 0]
 
-    # features
+    # =========================
+    # FEATURES
+    # =========================
     df["Alavancagem"] = df["Divida"] / df["EBITDA"]
 
-    df["Crescimento_Divida"] = (df["Divida"] - df["Divida_2023"]) / df["Divida_2023"]
-    df["Crescimento_EBITDA"] = (df["EBITDA"] - df["EBITDA_2023"]) / df["EBITDA_2023"]
+    df["Crescimento_Divida"] = (
+        (df["Divida"] - df["Divida_2023"]) / df["Divida_2023"]
+    )
 
-    df = df.replace([float('inf'), -float('inf')], 0)
+    df["Crescimento_EBITDA"] = (
+        (df["EBITDA"] - df["EBITDA_2023"]) / df["EBITDA_2023"]
+    )
 
+    df = df.replace([float('inf'), -float('inf')], 0).fillna(0)
+
+    # =========================
     # TARGET (proxy)
+    # =========================
     df["Default"] = (df["Alavancagem"] > 4.5).astype(int)
+
+    print("DATASET SIZE:", len(df))
 
     dados_cache = df
     return df
@@ -60,6 +80,9 @@ def treinar_modelo():
     global modelo
 
     df = carregar_dataset()
+
+    if len(df) < 10:
+        raise Exception("Dataset muito pequeno para treinar modelo")
 
     X = df[[
         "Alavancagem",
@@ -74,7 +97,7 @@ def treinar_modelo():
 
 
 # =========================
-# PREVISÃO
+# PREVER
 # =========================
 def prever(dados_empresa):
     global modelo
@@ -93,7 +116,7 @@ def prever(dados_empresa):
 
 
 # =========================
-# SCORE SIMPLES
+# SCORE
 # =========================
 def gerar_score(prob):
     if prob < 0.05:
@@ -118,9 +141,29 @@ def gerar_score(prob):
 @app.route('/')
 def api():
     empresa_query = request.args.get('empresa', '').lower()
+    tipo = request.args.get('tipo', '')
 
     df = carregar_dataset()
 
+    # =========================
+    # TOP RISCO
+    # =========================
+    if tipo == "top-risk":
+        df_sorted = df.sort_values(by="Alavancagem", ascending=False)
+
+        resultado = []
+
+        for _, row in df_sorted.head(10).iterrows():
+            resultado.append({
+                "Empresa": row.iloc[0],
+                "Alavancagem": round(row["Alavancagem"], 2)
+            })
+
+        return jsonify(resultado)
+
+    # =========================
+    # BUSCA
+    # =========================
     if empresa_query:
         resultados = []
 
@@ -131,11 +174,11 @@ def api():
 
                 dados_empresa = {
                     "Empresa": row.iloc[0],
-                    "Divida_2024": row["Divida"],
-                    "EBITDA_2024": row["EBITDA"],
-                    "Alavancagem": row["Alavancagem"],
-                    "Crescimento_Divida": row["Crescimento_Divida"],
-                    "Crescimento_EBITDA": row["Crescimento_EBITDA"]
+                    "Divida_2024": float(row["Divida"]),
+                    "EBITDA_2024": float(row["EBITDA"]),
+                    "Alavancagem": float(row["Alavancagem"]),
+                    "Crescimento_Divida": float(row["Crescimento_Divida"]),
+                    "Crescimento_EBITDA": float(row["Crescimento_EBITDA"])
                 }
 
                 prob = prever(dados_empresa)
@@ -152,7 +195,7 @@ def api():
 
 
 # =========================
-# VERCEL HANDLER
+# HANDLER VERCEL
 # =========================
 def handler(environ, start_response):
     return app(environ, start_response)
