@@ -1,31 +1,65 @@
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
+import os
 
 modelo = None
 
+# =========================
+# CARREGAR DATASET
+# =========================
 def carregar_dataset():
-    df = pd.read_csv('data/SPGlobal_Export_4-14-2026_FinalVersion.csv', encoding='latin-1')
+    base_path = os.path.dirname(__file__)
+    file_path = os.path.join(
+        base_path,
+        '..',
+        'data',
+        'SPGlobal_Export_4-14-2026_FinalVersion.csv'
+    )
 
-    # remover lixo
-    df = df.dropna()
+    print("CSV PATH:", file_path)
 
-    # converter colunas
-    df["Divida"] = df.iloc[:, 3].replace(',', '', regex=True).astype(float)
-    df["EBITDA"] = df.iloc[:, 9].replace(',', '', regex=True).astype(float)
+    if not os.path.exists(file_path):
+        print("❌ CSV NÃO ENCONTRADO")
+        return None
 
-    # criar feature
+    df = pd.read_csv(file_path, encoding='latin-1')
+
+    # converter colunas com segurança
+    df["Divida"] = pd.to_numeric(df.iloc[:, 3].astype(str).str.replace(',', ''), errors='coerce')
+    df["EBITDA"] = pd.to_numeric(df.iloc[:, 9].astype(str).str.replace(',', ''), errors='coerce')
+
+    # remover apenas linhas inválidas (mais seguro que dropna total)
+    df = df[(df["EBITDA"] > 0) & (df["Divida"] > 0)]
+
+    # evitar dataset vazio
+    if df.empty:
+        print("❌ DATASET VAZIO APÓS LIMPEZA")
+        return None
+
+    # feature
     df["Alavancagem"] = df["Divida"] / df["EBITDA"]
 
-    # variável alvo (proxy)
+    # limitar outliers (importante)
+    df["Alavancagem"] = df["Alavancagem"].clip(upper=20)
+
+    # target (proxy)
     df["Default"] = (df["Alavancagem"] > 4.5).astype(int)
 
     return df[["Alavancagem", "Default"]]
 
 
+# =========================
+# TREINAR MODELO
+# =========================
 def treinar_modelo():
     global modelo
 
     df = carregar_dataset()
+
+    if df is None:
+        print("❌ ERRO AO CARREGAR DATASET")
+        modelo = None
+        return
 
     X = df[["Alavancagem"]]
     y = df["Default"]
@@ -33,12 +67,25 @@ def treinar_modelo():
     modelo = LogisticRegression()
     modelo.fit(X, y)
 
+    print("✅ MODELO TREINADO")
 
+
+# =========================
+# PREVISÃO
+# =========================
 def prever(alavancagem):
     global modelo
 
-    if modelo is None:
-        treinar_modelo()
+    try:
+        if modelo is None:
+            treinar_modelo()
 
-    prob = modelo.predict_proba([[alavancagem]])[0][1]
-    return float(prob)
+        if modelo is None:
+            return 0.12  # fallback seguro
+
+        prob = modelo.predict_proba([[alavancagem]])[0][1]
+        return float(prob)
+
+    except Exception as e:
+        print("❌ ERRO NA PREVISÃO:", e)
+        return 0.12
