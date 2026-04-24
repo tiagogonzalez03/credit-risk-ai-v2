@@ -201,4 +201,4 @@ def handler(environ, start_response):
 # =========================
 # VERCEL ENTRYPOINT
 # =========================
-app = app
+handler = app
