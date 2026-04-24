@@ -19,7 +19,11 @@ def carregar_dataset():
     if dados_cache is not None:
         return dados_cache
 
-    file_path = os.path.join(os.getcwd(), 'data', 'SPGlobal_Export_4-14-2026_FinalVersion.csv')
+    # caminho robusto (Vercel-safe)
+    base_path = os.path.dirname(__file__)
+    file_path = os.path.abspath(
+        os.path.join(base_path, '..', 'data', 'SPGlobal_Export_4-14-2026_FinalVersion.csv')
+    )
 
     print("PATH:", file_path)
     print("EXISTS:", os.path.exists(file_path))
@@ -63,7 +67,7 @@ def carregar_dataset():
     df = df.replace([float('inf'), -float('inf')], 0).fillna(0)
 
     # =========================
-    # TARGET (proxy)
+    # TARGET
     # =========================
     df["Default"] = (df["Alavancagem"] > 4.5).astype(int)
 
@@ -82,7 +86,7 @@ def treinar_modelo():
     df = carregar_dataset()
 
     if len(df) < 10:
-        raise Exception("Dataset muito pequeno para treinar modelo")
+        raise Exception("Dataset muito pequeno")
 
     X = df[[
         "Alavancagem",
@@ -138,16 +142,14 @@ def gerar_score(prob):
 # =========================
 # API
 # =========================
-@app.route('/api')
+@app.route('/')
 def api():
     empresa_query = request.args.get('empresa', '').lower()
     tipo = request.args.get('tipo', '')
 
     df = carregar_dataset()
 
-    # =========================
     # TOP RISCO
-    # =========================
     if tipo == "top-risk":
         df_sorted = df.sort_values(by="Alavancagem", ascending=False)
 
@@ -161,9 +163,7 @@ def api():
 
         return jsonify(resultado)
 
-    # =========================
     # BUSCA
-    # =========================
     if empresa_query:
         resultados = []
 
@@ -195,7 +195,6 @@ def api():
 
 
 # =========================
-# HANDLER VERCEL
+# VERCEL EXPORT (ESSENCIAL)
 # =========================
-def handler(environ, start_response):
-    return app(environ, start_response)
+app = app
