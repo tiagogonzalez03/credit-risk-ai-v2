@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from model import prever
+from .model import prever
 import csv
 import os
 import unicodedata
