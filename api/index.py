@@ -152,9 +152,9 @@ def api():
 
                 # ✅ CORREÇÃO AQUI
                 if item["Alavancagem"] is not None:
-                    prob = 0.12
+                    try:     prob = prever(item["Alavancagem"]) except:     prob = 0.12
                 else:
-                    prob = 0.12
+                    try:     prob = prever(item["Alavancagem"]) except:     prob = 0.12
 
                 score = gerar_score(prob)
 
