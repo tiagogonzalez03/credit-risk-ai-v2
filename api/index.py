@@ -197,3 +197,8 @@ def api():
 # =========================
 def handler(environ, start_response):
     return app(environ, start_response)
+
+# =========================
+# VERCEL ENTRYPOINT
+# =========================
+app = app
