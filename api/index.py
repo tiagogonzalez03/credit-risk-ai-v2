@@ -152,7 +152,7 @@ def api():
 
                 # ✅ CORREÇÃO AQUI
                 if item["Alavancagem"] is not None:
-                    prob = prever(item["Alavancagem"])
+                    prob = 0.12
                 else:
                     prob = 0.12
 
