@@ -1,169 +1,158 @@
 from flask import Flask, request, jsonify
-from .model import prever
-import csv
+import pandas as pd
 import os
-import unicodedata
+
+from sklearn.linear_model import LogisticRegression
 
 app = Flask(__name__)
 
+modelo = None
 dados_cache = None
-
-# =========================
-# NORMALIZAR TEXTO
-# =========================
-def limpar_texto(texto):
-    return unicodedata.normalize('NFKD', texto)\
-        .encode('ascii', 'ignore')\
-        .decode('utf-8')\
-        .lower().strip()
-
-# =========================
-# CONVERSÃO SEGURA
-# =========================
-def to_float(value):
-    try:
-        return float(str(value).replace(',', '').strip())
-    except:
-        return 0.0
-
-# =========================
-# SCORE DE CRÉDITO
-# =========================
-def gerar_score(prob):
-    if prob < 0.03:
-        return "AAA"
-    elif prob < 0.07:
-        return "AA"
-    elif prob < 0.12:
-        return "A"
-    elif prob < 0.2:
-        return "BBB"
-    elif prob < 0.3:
-        return "BB"
-    else:
-        return "B"
-
-# =========================
-# INTERPRETAÇÃO
-# =========================
-def gerar_analise(d):
-    if d["Alavancagem"] is None:
-        return "Dados insuficientes."
-
-    if d["Alavancagem"] < 1:
-        return "Baixo nível de dívida."
-    elif d["Alavancagem"] < 3:
-        return "Estrutura de capital equilibrada."
-    elif d["Alavancagem"] < 5:
-        return "Atenção ao nível de endividamento."
-    else:
-        return "Alto risco financeiro."
 
 # =========================
 # CARREGAR DADOS
 # =========================
-def carregar_dados():
+def carregar_dataset():
     global dados_cache
 
     if dados_cache is not None:
         return dados_cache
 
-    file_path = 'data/SPGlobal_Export_4-14-2026_FinalVersion.csv'
+    base_path = os.path.dirname(__file__)
+    file_path = os.path.abspath(
+        os.path.join(base_path, '..', 'data', 'SPGlobal_Export_4-14-2026_FinalVersion.csv')
+    )
 
-    dados = []
+    df = pd.read_csv(file_path, encoding='latin-1')
 
-    if not os.path.exists(file_path):
-        return []
+    # limpar dados inválidos
+    df = df.dropna()
 
-    with open(file_path, newline='', encoding='latin-1') as csvfile:
-        reader = csv.reader(csvfile)
+    # conversões
+    df["Divida"] = df.iloc[:, 3].astype(str).str.replace(',', '').astype(float)
+    df["Divida_2023"] = df.iloc[:, 2].astype(str).str.replace(',', '').astype(float)
 
-        for row in reader:
-            if not row or len(row) < 10:
-                continue
+    df["EBITDA"] = df.iloc[:, 9].astype(str).str.replace(',', '').astype(float)
+    df["EBITDA_2023"] = df.iloc[:, 8].astype(str).str.replace(',', '').astype(float)
 
-            try:
-                empresa = row[0].strip()
+    # remover casos problemáticos
+    df = df[df["EBITDA"] != 0]
 
-                divida_2024 = to_float(row[3])
-                divida_2023 = to_float(row[2])
+    # features
+    df["Alavancagem"] = df["Divida"] / df["EBITDA"]
 
-                ebitda_2024 = to_float(row[9])
-                ebitda_2023 = to_float(row[8])
+    df["Crescimento_Divida"] = (df["Divida"] - df["Divida_2023"]) / df["Divida_2023"]
+    df["Crescimento_EBITDA"] = (df["EBITDA"] - df["EBITDA_2023"]) / df["EBITDA_2023"]
 
-                alavancagem = (
-                    divida_2024 / ebitda_2024
-                    if ebitda_2024 != 0 else None
-                )
+    df = df.replace([float('inf'), -float('inf')], 0)
 
-                crescimento_divida = (
-                    (divida_2024 - divida_2023) / divida_2023
-                    if divida_2023 != 0 else 0
-                )
+    # TARGET (proxy)
+    df["Default"] = (df["Alavancagem"] > 4.5).astype(int)
 
-                crescimento_ebitda = (
-                    (ebitda_2024 - ebitda_2023) / ebitda_2023
-                    if ebitda_2023 != 0 else 0
-                )
+    dados_cache = df
+    return df
 
-                dados.append({
-                    "Empresa": empresa,
-                    "Divida_2024": divida_2024,
-                    "EBITDA_2024": ebitda_2024,
-                    "Alavancagem": round(alavancagem, 2) if alavancagem else None,
-                    "Crescimento_Divida": crescimento_divida,
-                    "Crescimento_EBITDA": crescimento_ebitda
-                })
 
-            except:
-                continue
+# =========================
+# TREINAR MODELO
+# =========================
+def treinar_modelo():
+    global modelo
 
-    dados_cache = dados
-    return dados_cache
+    df = carregar_dataset()
+
+    X = df[[
+        "Alavancagem",
+        "Crescimento_Divida",
+        "Crescimento_EBITDA"
+    ]]
+
+    y = df["Default"]
+
+    modelo = LogisticRegression(max_iter=1000)
+    modelo.fit(X, y)
+
+
+# =========================
+# PREVISÃO
+# =========================
+def prever(dados_empresa):
+    global modelo
+
+    if modelo is None:
+        treinar_modelo()
+
+    X = [[
+        dados_empresa["Alavancagem"],
+        dados_empresa["Crescimento_Divida"],
+        dados_empresa["Crescimento_EBITDA"]
+    ]]
+
+    prob = modelo.predict_proba(X)[0][1]
+    return float(prob)
+
+
+# =========================
+# SCORE SIMPLES
+# =========================
+def gerar_score(prob):
+    if prob < 0.05:
+        return "AAA"
+    elif prob < 0.10:
+        return "AA"
+    elif prob < 0.20:
+        return "A"
+    elif prob < 0.30:
+        return "BBB"
+    elif prob < 0.50:
+        return "BB"
+    elif prob < 0.70:
+        return "B"
+    else:
+        return "D"
+
 
 # =========================
 # API
 # =========================
-@app.route('/')
+@app.route('/api')
 def api():
-    tipo = request.args.get('tipo', '')
-    empresa_query = request.args.get('empresa', '')
+    empresa_query = request.args.get('empresa', '').lower()
 
-    dados = carregar_dados()
+    df = carregar_dataset()
 
-    # 🔥 TOP RISCO
-    if tipo == "top-risk":
-        ordenado = sorted(
-            dados,
-            key=lambda x: x["Alavancagem"] if x["Alavancagem"] is not None else -1,
-            reverse=True
-        )
-        return jsonify(ordenado[:10])
-
-    # 🔎 BUSCA
     if empresa_query:
-        query = limpar_texto(empresa_query)
         resultados = []
 
-        for item in dados:
-            nome = limpar_texto(item["Empresa"])
+        for _, row in df.iterrows():
+            nome = str(row.iloc[0]).lower()
 
-            if query in nome:
+            if empresa_query in nome:
 
-                # ✅ CORREÇÃO AQUI
-                if item["Alavancagem"] is not None:
-                    try:     prob = prever(item["Alavancagem"]) except:     prob = 0.12
-                else:
-                    try:     prob = prever(item["Alavancagem"]) except:     prob = 0.12
+                dados_empresa = {
+                    "Empresa": row.iloc[0],
+                    "Divida_2024": row["Divida"],
+                    "EBITDA_2024": row["EBITDA"],
+                    "Alavancagem": row["Alavancagem"],
+                    "Crescimento_Divida": row["Crescimento_Divida"],
+                    "Crescimento_EBITDA": row["Crescimento_EBITDA"]
+                }
 
+                prob = prever(dados_empresa)
                 score = gerar_score(prob)
 
-                item["Prob_Default"] = round(prob, 3)
-                item["Score"] = score
-                item["Analise"] = gerar_analise(item)
+                dados_empresa["Prob_Default"] = round(prob, 3)
+                dados_empresa["Score"] = score
 
-                resultados.append(item)
+                resultados.append(dados_empresa)
 
         return jsonify(resultados[:10])
 
     return jsonify({"status": "ok"})
+
+
+# =========================
+# VERCEL HANDLER
+# =========================
+def handler(environ, start_response):
+    return app(environ, start_response)
