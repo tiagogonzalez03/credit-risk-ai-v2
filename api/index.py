@@ -20,6 +20,8 @@ def carregar_dataset():
 
     base_path = os.path.dirname(__file__)
     file_path = os.path.join(os.getcwd(), 'data', 'SPGlobal_Export_4-14-2026_FinalVersion.csv')
+    print("PATH:", file_path)
+    print("EXISTS:", os.path.exists(file_path))
 
     df = pd.read_csv(file_path, encoding='latin-1')
 
