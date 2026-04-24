@@ -91,11 +91,13 @@ button {
 
 <script>
 
+let timeout = null;
+
 // =========================
 // FORMATAR NÚMEROS
 // =========================
 function formatarNumero(valor) {
-  if (valor === null || valor === undefined) return "-";
+  if (!valor) return "-";
   return valor.toLocaleString('pt-BR');
 }
 
@@ -116,8 +118,8 @@ function recomendacao(score) {
   if (["AAA","AA","A"].includes(score))
     return "🟢 Comprar / Longo prazo";
   if (["BBB","BB"].includes(score))
-    return "🟡 Atenção / Avaliar melhor";
-  return "🔴 Evitar / Alto risco";
+    return "🟡 Atenção";
+  return "🔴 Evitar";
 }
 
 // =========================
@@ -135,19 +137,15 @@ function interpretarProb(p) {
 // =========================
 function explicacao(item) {
   if (item.Alavancagem > 4.5)
-    return "Alta alavancagem é o principal fator de risco.";
-
+    return "Alta alavancagem aumenta o risco.";
   if (item.Crescimento_EBITDA < 0)
-    return "Queda no EBITDA aumenta o risco.";
-
-  return "Estrutura financeira relativamente saudável.";
+    return "Queda no EBITDA impacta negativamente.";
+  return "Situação financeira relativamente saudável.";
 }
 
 // =========================
 // AUTOCOMPLETE
 // =========================
-let timeout = null;
-
 async function autocomplete() {
   const query = document.getElementById("empresa").value;
   const box = document.getElementById("suggestions");
@@ -160,7 +158,8 @@ async function autocomplete() {
   }
 
   timeout = setTimeout(async () => {
-    const res = await fetch(`/api?empresa=${query}`);
+
+    const res = await fetch(window.location.origin + `/api?empresa=${query}`);
     const data = await res.json();
 
     box.innerHTML = "";
@@ -177,11 +176,12 @@ async function autocomplete() {
 
       box.appendChild(div);
     });
+
   }, 300);
 }
 
 // =========================
-// BUSCA PRINCIPAL
+// BUSCA
 // =========================
 async function buscar() {
   const empresa = document.getElementById("empresa").value;
@@ -189,7 +189,7 @@ async function buscar() {
 
   div.innerHTML = "🔄 Buscando...";
 
-  const res = await fetch(`/api?empresa=${empresa}`);
+  const res = await fetch(window.location.origin + `/api?empresa=${empresa}`);
   const data = await res.json();
 
   const item = data[0];
@@ -229,11 +229,11 @@ async function buscar() {
 
       <hr>
 
-      <p><b>🧠 Explicação do Modelo:</b><br>
+      <p><b>🧠 Explicação:</b><br>
       ${explicacao(item)}</p>
 
       <p style="font-size:12px; color:#94a3b8;">
-        Modelo: Regressão Logística (3 variáveis)
+        Modelo: Regressão Logística
       </p>
 
     </div>
@@ -246,7 +246,7 @@ async function buscar() {
 async function topRisk() {
   const div = document.getElementById("resultado");
 
-  const res = await fetch(`/api?tipo=top-risk`);
+  const res = await fetch(window.location.origin + `/api?tipo=top-risk`);
   const data = await res.json();
 
   let html = `<div class="card"><h3>🔥 Top 10 Mais Arriscadas</h3>`;
@@ -260,7 +260,7 @@ async function topRisk() {
   div.innerHTML = html;
 }
 
-// evento
+// eventos
 document.getElementById("empresa").addEventListener("input", autocomplete);
 
 </script>
