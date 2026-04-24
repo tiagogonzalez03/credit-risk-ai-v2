@@ -1,3 +1,4 @@
+from model import prever
 from flask import Flask, request, jsonify
 import csv
 import os
@@ -178,7 +179,7 @@ def api():
             nome = limpar_texto(item["Empresa"])
 
             if query in nome:
-                prob = calcular_probabilidade(item)
+                if item["Alavancagem"] is not None:     prob = prever(item["Alavancagem"]) else:     prob = 0.12
                 score = gerar_score(prob)
 
                 item["Prob_Default"] = round(prob, 3)
